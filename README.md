@@ -133,7 +133,7 @@ HarnessGuard requires **Python 3.9 or newer**.
 Clone the repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/harnessguard.git
+git clone https://github.com/cbk914/harnessguard.git
 cd harnessguard
 ```
 
