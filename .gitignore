@@ -32,3 +32,4 @@ harnessguard-report*.json
 harnessguard-session*.pcap
 harness-canary/
 *.sarif
+results/
