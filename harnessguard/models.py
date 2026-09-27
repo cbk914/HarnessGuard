@@ -1,15 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
-SEVERITY_ORDER = {
-    "INFO": 0,
-    "LOW": 1,
-    "MEDIUM": 2,
-    "HIGH": 3,
-    "CRITICAL": 4,
-}
+SEVERITY_ORDER = {"INFO": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
 
 @dataclass
@@ -18,12 +12,13 @@ class Finding:
     category: str
     title: str
     evidence: str
-    path: Optional[str] = None
-    line: Optional[int] = None
-    recommendation: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    path: str | None = None
+    line: int | None = None
+    recommendation: str | None = None
+    metadata: dict[str, Any] | None = None
+    confidence: str = "MEDIUM"
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
