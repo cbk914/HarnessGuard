@@ -4,8 +4,8 @@ import json
 import secrets
 import shutil
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
-from typing import List, Sequence, Tuple
 
 from .models import Finding
 from .static_scan import dedupe_findings
@@ -17,17 +17,28 @@ def make_canary_workspace(dest: Path) -> dict:
 
     token = "PRIVACY_CANARY_" + secrets.token_hex(24)
     fake_api = "sk-" + secrets.token_urlsafe(32)
-    fake_bearer = "eyJ" + secrets.token_urlsafe(18) + "." + secrets.token_urlsafe(18) + "." + secrets.token_urlsafe(18)
+    fake_bearer = (
+        "eyJ"
+        + secrets.token_urlsafe(18)
+        + "."
+        + secrets.token_urlsafe(18)
+        + "."
+        + secrets.token_urlsafe(18)
+    )
 
     generated_files = {
         "README.md": "# AI Harness Privacy Canary\n\nThis workspace contains ONLY synthetic test data.\n",
         "src/main.py": "def hello():\n    return 'privacy canary workspace'\n",
         ".env": f"CANARY_ID={token}\nFAKE_OPENAI_API_KEY={fake_api}\nFAKE_BEARER_TOKEN={fake_bearer}\n",
-        "config/private-config.json": json.dumps({
-            "canary": token,
-            "fake_token": fake_api,
-            "purpose": "synthetic privacy checker data",
-        }, indent=2) + "\n",
+        "config/private-config.json": json.dumps(
+            {
+                "canary": token,
+                "fake_token": fake_api,
+                "purpose": "synthetic privacy checker data",
+            },
+            indent=2,
+        )
+        + "\n",
         "docs/internal-only.txt": f"SYNTHETIC INTERNAL MARKER: {token}\nThis is not real confidential data.\n",
     }
 
@@ -42,20 +53,48 @@ def make_canary_workspace(dest: Path) -> dict:
 
     if git:
         try:
-            subprocess.run([git, "init"], cwd=dest, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run([git, "config", "user.email", "privacy-canary@example.invalid"], cwd=dest, check=True)
+            subprocess.run(
+                [git, "init"],
+                cwd=dest,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            subprocess.run(
+                [git, "config", "user.email", "privacy-canary@example.invalid"],
+                cwd=dest,
+                check=True,
+            )
             subprocess.run([git, "config", "user.name", "Privacy Canary"], cwd=dest, check=True)
             subprocess.run([git, "add", "."], cwd=dest, check=True)
-            subprocess.run([git, "commit", "-m", "privacy canary baseline"], cwd=dest, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                [git, "commit", "-m", "privacy canary baseline"],
+                cwd=dest,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
             historic = "GIT_HISTORY_CANARY_" + secrets.token_hex(24)
             historic_file = dest / "historic-secret.txt"
             historic_file.write_text(historic + "\n", encoding="utf-8")
             subprocess.run([git, "add", "historic-secret.txt"], cwd=dest, check=True)
-            subprocess.run([git, "commit", "-m", "add synthetic historical secret"], cwd=dest, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                [git, "commit", "-m", "add synthetic historical secret"],
+                cwd=dest,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
             historic_file.unlink()
             subprocess.run([git, "add", "-u"], cwd=dest, check=True)
-            subprocess.run([git, "commit", "-m", "remove synthetic historical secret"], cwd=dest, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                [git, "commit", "-m", "remove synthetic historical secret"],
+                cwd=dest,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
             git_status = "created-with-deleted-history-canary"
         except Exception as exc:
@@ -76,7 +115,9 @@ def make_canary_workspace(dest: Path) -> dict:
     return manifest
 
 
-def hunt_canaries(token_file: Path, roots: Sequence[Path], max_file_bytes: int, max_files: int) -> Tuple[List[Finding], dict]:
+def hunt_canaries(
+    token_file: Path, roots: Sequence[Path], max_file_bytes: int, max_files: int
+) -> tuple[list[Finding], dict]:
     manifest = json.loads(token_file.read_text(encoding="utf-8"))
     needles = {
         "workspace_canary": manifest.get("canary_id"),
@@ -113,26 +154,34 @@ def hunt_canaries(token_file: Path, roots: Sequence[Path], max_file_bytes: int, 
                     if needle.encode("utf-8") not in data:
                         continue
                     hits += 1
-                    severity = "CRITICAL" if label in {
-                        "fake_openai_key", "fake_bearer_token", "git_history_canary"
-                    } else "HIGH"
-                    findings.append(Finding(
-                        severity, "canary-copy",
-                        f"Canary content copied outside test workspace ({label})",
-                        f"Marker found in {short_path(path)}",
-                        short_path(path),
-                        recommendation="Identify the process or feature that created this file and determine whether it is staging, telemetry, indexing, or upload-related."
-                    ))
+                    severity = (
+                        "CRITICAL"
+                        if label in {"fake_openai_key", "fake_bearer_token", "git_history_canary"}
+                        else "HIGH"
+                    )
+                    findings.append(
+                        Finding(
+                            severity,
+                            "canary-copy",
+                            f"Canary content copied outside test workspace ({label})",
+                            f"Marker found in {short_path(path)}",
+                            short_path(path),
+                            recommendation="Identify the process or feature that created this file and determine whether it is staging, telemetry, indexing, or upload-related.",
+                        )
+                    )
             except (OSError, PermissionError):
                 continue
 
     if hits == 0:
-        findings.append(Finding(
-            "INFO", "canary",
-            "No plaintext canary copies found in selected roots",
-            f"Scanned {scanned} file(s). Encrypted/compressed staging may not be detectable by plaintext hunt.",
-            recommendation="Combine this test with runtime network inspection and OS-level tracing."
-        ))
+        findings.append(
+            Finding(
+                "INFO",
+                "canary",
+                "No plaintext canary copies found in selected roots",
+                f"Scanned {scanned} file(s). Encrypted/compressed staging may not be detectable by plaintext hunt.",
+                recommendation="Combine this test with runtime network inspection and OS-level tracing.",
+            )
+        )
 
     return dedupe_findings(findings), {
         "files_scanned": scanned,

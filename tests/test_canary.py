@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from harnessguard.canary import hunt_canaries, make_canary_workspace
 
 

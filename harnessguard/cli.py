@@ -6,8 +6,8 @@ import json
 import os
 import platform
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 from . import __version__
 from .canary import hunt_canaries, make_canary_workspace
@@ -35,23 +35,31 @@ def build_parser() -> argparse.ArgumentParser:
 
     subcommands = parser.add_subparsers(dest="command", required=True)
 
-    audit = subcommands.add_parser("audit", help="Static scan of source, installations, and application data")
+    audit = subcommands.add_parser(
+        "audit", help="Static scan of source, installations, and application data"
+    )
     audit.add_argument("paths", nargs="+", type=Path)
     audit.add_argument("--app-data", action="append", default=[], type=Path)
     add_common_scan_args(audit)
 
-    runtime = subcommands.add_parser("runtime", help="Inspect outbound connections for a running process")
+    runtime = subcommands.add_parser(
+        "runtime", help="Inspect outbound connections for a running process"
+    )
     target = runtime.add_mutually_exclusive_group(required=True)
     target.add_argument("--pid", type=int)
     target.add_argument("--process-name")
     runtime.add_argument("--watch", type=int, default=0)
     runtime.add_argument("--json", type=Path)
 
-    canary = subcommands.add_parser("canary", help="Create a synthetic repository containing fake secrets and canaries")
+    canary = subcommands.add_parser(
+        "canary", help="Create a synthetic repository containing fake secrets and canaries"
+    )
     canary.add_argument("destination", type=Path)
     canary.add_argument("--json", type=Path)
 
-    hunt = subcommands.add_parser("hunt", help="Hunt app-data/cache locations for copied canary markers")
+    hunt = subcommands.add_parser(
+        "hunt", help="Hunt app-data/cache locations for copied canary markers"
+    )
     hunt.add_argument("--token-file", required=True, type=Path)
     hunt.add_argument("--root", action="append", required=True, type=Path)
     add_common_scan_args(hunt)
@@ -59,7 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 

@@ -5,7 +5,6 @@ import re
 import socket
 import subprocess
 import time
-from typing import Dict, List, Optional, Set, Tuple
 
 from .models import Finding
 from .static_scan import dedupe_findings
@@ -15,12 +14,13 @@ from .utils import is_public_ip, now_iso
 def _psutil_module():
     try:
         import psutil  # type: ignore
+
         return psutil
     except Exception:
         return None
 
 
-def find_pids_by_name(name: str) -> List[int]:
+def find_pids_by_name(name: str) -> list[int]:
     name_lower = name.lower()
     psutil = _psutil_module()
     pids = []
@@ -28,11 +28,13 @@ def find_pids_by_name(name: str) -> List[int]:
     if psutil:
         for process in psutil.process_iter(["pid", "name", "exe", "cmdline"]):
             try:
-                haystack = " ".join([
-                    str(process.info.get("name") or ""),
-                    str(process.info.get("exe") or ""),
-                    " ".join(process.info.get("cmdline") or []),
-                ]).lower()
+                haystack = " ".join(
+                    [
+                        str(process.info.get("name") or ""),
+                        str(process.info.get("exe") or ""),
+                        " ".join(process.info.get("cmdline") or []),
+                    ]
+                ).lower()
                 if name_lower in haystack:
                     pids.append(int(process.info["pid"]))
             except Exception:
@@ -41,8 +43,12 @@ def find_pids_by_name(name: str) -> List[int]:
 
     try:
         if os.name == "nt":
-            import csv, io
-            output = subprocess.check_output(["tasklist", "/FO", "CSV", "/NH"], text=True, errors="replace")
+            import csv
+            import io
+
+            output = subprocess.check_output(
+                ["tasklist", "/FO", "CSV", "/NH"], text=True, errors="replace"
+            )
             for row in csv.reader(io.StringIO(output)):
                 if len(row) >= 2 and name_lower in row[0].lower():
                     try:
@@ -50,7 +56,9 @@ def find_pids_by_name(name: str) -> List[int]:
                     except ValueError:
                         pass
         else:
-            output = subprocess.check_output(["ps", "-eo", "pid=,comm=,args="], text=True, errors="replace")
+            output = subprocess.check_output(
+                ["ps", "-eo", "pid=,comm=,args="], text=True, errors="replace"
+            )
             for line in output.splitlines():
                 if name_lower in line.lower():
                     match = re.match(r"\s*(\d+)", line)
@@ -62,7 +70,7 @@ def find_pids_by_name(name: str) -> List[int]:
     return sorted(set(pids))
 
 
-def children_of(pid: int) -> Set[int]:
+def children_of(pid: int) -> set[int]:
     pids = {pid}
     psutil = _psutil_module()
     if psutil:
@@ -80,19 +88,21 @@ def process_info(pid: int) -> dict:
     if psutil:
         try:
             process = psutil.Process(pid)
-            info.update({
-                "name": process.name(),
-                "exe": process.exe(),
-                "cmdline": process.cmdline(),
-                "cwd": process.cwd(),
-                "username": process.username(),
-            })
+            info.update(
+                {
+                    "name": process.name(),
+                    "exe": process.exe(),
+                    "cmdline": process.cmdline(),
+                    "cwd": process.cwd(),
+                    "username": process.username(),
+                }
+            )
         except Exception as exc:
             info["error"] = str(exc)
     return info
 
 
-def split_host_port(value: str) -> Tuple[str, Optional[int]]:
+def split_host_port(value: str) -> tuple[str, int | None]:
     value = value.strip()
     if value.startswith("[") and "]:" in value:
         host, port = value.rsplit(":", 1)
@@ -107,7 +117,7 @@ def split_host_port(value: str) -> Tuple[str, Optional[int]]:
         return host, None
 
 
-def connections_for_pids(pids: Set[int]) -> List[dict]:
+def connections_for_pids(pids: set[int]) -> list[dict]:
     psutil = _psutil_module()
     results = []
 
@@ -118,25 +128,33 @@ def connections_for_pids(pids: Set[int]) -> List[dict]:
                 for connection in process.net_connections(kind="inet"):
                     if not connection.raddr:
                         continue
-                    local_ip = getattr(connection.laddr, "ip", connection.laddr[0] if connection.laddr else None)
-                    local_port = getattr(connection.laddr, "port", connection.laddr[1] if connection.laddr else None)
+                    local_ip = getattr(
+                        connection.laddr, "ip", connection.laddr[0] if connection.laddr else None
+                    )
+                    local_port = getattr(
+                        connection.laddr, "port", connection.laddr[1] if connection.laddr else None
+                    )
                     remote_ip = getattr(connection.raddr, "ip", connection.raddr[0])
                     remote_port = getattr(connection.raddr, "port", connection.raddr[1])
-                    results.append({
-                        "pid": pid,
-                        "local_ip": local_ip,
-                        "local_port": local_port,
-                        "remote_ip": remote_ip,
-                        "remote_port": remote_port,
-                        "status": str(connection.status),
-                    })
+                    results.append(
+                        {
+                            "pid": pid,
+                            "local_ip": local_ip,
+                            "local_port": local_port,
+                            "remote_ip": remote_ip,
+                            "remote_port": remote_port,
+                            "status": str(connection.status),
+                        }
+                    )
             except Exception:
                 continue
         return results
 
     try:
         if os.name == "nt":
-            output = subprocess.check_output(["netstat", "-ano", "-p", "tcp"], text=True, errors="replace")
+            output = subprocess.check_output(
+                ["netstat", "-ano", "-p", "tcp"], text=True, errors="replace"
+            )
             for line in output.splitlines():
                 cols = line.split()
                 if len(cols) < 5 or cols[0].upper() != "TCP":
@@ -149,16 +167,20 @@ def connections_for_pids(pids: Set[int]) -> List[dict]:
                     continue
                 remote_ip, remote_port = split_host_port(cols[2])
                 local_ip, local_port = split_host_port(cols[1])
-                results.append({
-                    "pid": pid,
-                    "local_ip": local_ip,
-                    "local_port": local_port,
-                    "remote_ip": remote_ip,
-                    "remote_port": remote_port,
-                    "status": cols[3],
-                })
+                results.append(
+                    {
+                        "pid": pid,
+                        "local_ip": local_ip,
+                        "local_port": local_port,
+                        "remote_ip": remote_ip,
+                        "remote_port": remote_port,
+                        "status": cols[3],
+                    }
+                )
         else:
-            output = subprocess.check_output(["ss", "-ntp"], text=True, errors="replace", stderr=subprocess.DEVNULL)
+            output = subprocess.check_output(
+                ["ss", "-ntp"], text=True, errors="replace", stderr=subprocess.DEVNULL
+            )
             for line in output.splitlines():
                 pid_match = re.search(r"pid=(\d+)", line)
                 if not pid_match:
@@ -171,21 +193,23 @@ def connections_for_pids(pids: Set[int]) -> List[dict]:
                     continue
                 local_ip, local_port = split_host_port(cols[3])
                 remote_ip, remote_port = split_host_port(cols[4])
-                results.append({
-                    "pid": pid,
-                    "local_ip": local_ip,
-                    "local_port": local_port,
-                    "remote_ip": remote_ip,
-                    "remote_port": remote_port,
-                    "status": cols[0],
-                })
+                results.append(
+                    {
+                        "pid": pid,
+                        "local_ip": local_ip,
+                        "local_port": local_port,
+                        "remote_ip": remote_ip,
+                        "remote_port": remote_port,
+                        "status": cols[0],
+                    }
+                )
     except Exception:
         pass
 
     return results
 
 
-def reverse_dns(ip: str) -> Optional[str]:
+def reverse_dns(ip: str) -> str | None:
     try:
         return socket.gethostbyaddr(ip)[0]
     except Exception:
@@ -195,7 +219,7 @@ def reverse_dns(ip: str) -> Optional[str]:
 def runtime_audit(pid: int, watch: int, interval: float = 1.0):
     findings = []
     info = process_info(pid)
-    observed: Dict[Tuple[int, str, int], dict] = {}
+    observed: dict[tuple[int, str, int], dict] = {}
     end = time.time() + max(0, watch)
 
     while True:
@@ -225,21 +249,27 @@ def runtime_audit(pid: int, watch: int, interval: float = 1.0):
         if host:
             destination += f" ({host})"
         severity = "MEDIUM" if connection["remote_port"] in (80, 443, 8080, 8443) else "LOW"
-        findings.append(Finding(
-            severity, "runtime-egress",
-            "Observed outbound connection from target process",
-            destination,
-            metadata={"pid": connection["pid"], "connection": connection},
-            recommendation="Correlate this destination with documented model/API/telemetry endpoints and capture DNS/TLS metadata or proxy traffic if deeper inspection is authorized."
-        ))
+        findings.append(
+            Finding(
+                severity,
+                "runtime-egress",
+                "Observed outbound connection from target process",
+                destination,
+                metadata={"pid": connection["pid"], "connection": connection},
+                recommendation="Correlate this destination with documented model/API/telemetry endpoints and capture DNS/TLS metadata or proxy traffic if deeper inspection is authorized.",
+            )
+        )
 
     if not public:
-        findings.append(Finding(
-            "INFO", "runtime-egress",
-            "No public outbound connection observed during the sampling window",
-            f"PID {pid}; watch={watch}s. This does NOT prove the process never sends data.",
-            recommendation="Exercise code-indexing, chat, autocomplete, repo-wiki, login, and telemetry paths while running a longer watch."
-        ))
+        findings.append(
+            Finding(
+                "INFO",
+                "runtime-egress",
+                "No public outbound connection observed during the sampling window",
+                f"PID {pid}; watch={watch}s. This does NOT prove the process never sends data.",
+                recommendation="Exercise code-indexing, chat, autocomplete, repo-wiki, login, and telemetry paths while running a longer watch.",
+            )
+        )
 
     metadata = {
         "process": info,
