@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.2.0] - 2026-11-21
+
+### Communication detection
+- New `harnessguard network` workflow: samples TCP and UDP sockets of a target
+  process and every descendant over a configurable window.
+- Cross-platform process and socket collection without mandatory dependencies
+  (`psutil` remains optional; Windows uses `Get-CimInstance`/`Get-NetTCPConnection`,
+  Linux and macOS use `ps`/`ss`, with `netstat` fallback).
+- Endpoint attribution: remote addresses are mapped back to the hostnames that
+  serve them using harness-declared hosts, hostnames harvested from the
+  harness' own configuration and state files, and reverse DNS.
+- Self-declared vs unattributed classification of every observed destination.
+- Optional TLS certificate name extraction for unattributed destinations
+  (`--tls-names`), implemented as a plain handshake that needs no elevated
+  privileges.
+- Optional jurisdiction and network owner resolution (`--geoip`, opt-in, cached
+  on disk, overridable endpoint).
+- Payload evidence: locates outbound request payloads that the harness
+  persisted on disk (model, system prompt, tool schemas, conversation) so the
+  exact content leaving the machine can be reviewed.
+- New findings: `network-third-party-egress`, `network-beacon-pattern`,
+  `network-cross-jurisdiction-egress`, `network-payload-evidence`,
+  `network-egress`.
+- Markdown report output (`--markdown`) with an endpoint table, findings and
+  limitations.
+- Harness profiles (`profiles/*.json`, `~/.harnessguard/profiles/`) describing
+  expected processes, endpoints and jurisdictions, with two examples.
+
+### Documentation
+- New `docs/NETWORK_COMMS.md` describing the attribution model, the profile
+  format, the finding semantics and the limits of the evidence.
+- README updated with the new workflow and with the roadmap entries that are
+  now delivered.
+
+### Packaging
+- Bumped version to `0.2.0`.
+
 ## [0.1.1] - 2026-09-26
 
 ### False-positive reduction

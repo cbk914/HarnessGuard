@@ -1,0 +1,17 @@
+{
+  "name": "minimax-code-desktop",
+  "notes": "Example profile for the MiniMax Code desktop client. Values reflect one audited installation and are meant to be edited.",
+  "process_patterns": ["MiniMax Code.exe", "nxnode.bin"],
+  "regex": false,
+  "declared_hosts": [
+    "agent.minimax.io",
+    "agent-stream.minimax.io",
+    "platform.minimax.io",
+    "account.minimax.io",
+    "agent-cdn.minimax.io",
+    "agent-storage.minimax.io",
+    "file.cdn.minimax.io"
+  ],
+  "declared_jurisdictions": ["ES", "US"],
+  "app_data_paths": []
+}

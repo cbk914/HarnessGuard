@@ -33,3 +33,8 @@ harnessguard-session*.pcap
 harness-canary/
 *.sarif
 results/
+
+# Local communication-audit artefacts
+.geoip-cache.json
+*-network-report.json
+*-network-report.md

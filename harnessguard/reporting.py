@@ -128,3 +128,107 @@ def exit_code(findings: Sequence[Finding]) -> int:
     if maximum >= SEVERITY_ORDER["HIGH"]:
         return 1
     return 0
+
+def format_endpoint_table(endpoints: Sequence[dict]) -> str:
+    """Render observed endpoints as a Markdown table."""
+    header = (
+        "| Endpoint | Attribution | Hosts | Owner | Jurisdiction | First seen | "
+        "Last seen | Samples |"
+    )
+    divider = "|---|---|---|---|---|---|---|---|"
+    lines = [header, divider]
+    for endpoint in endpoints:
+        hosts = ", ".join(endpoint.get("hosts") or []) or "-"
+        owner = endpoint.get("org") or "-"
+        country = endpoint.get("country_code") or "-"
+        lines.append(
+            "| {ip}:{port}/{proto} | {attribution} | {hosts} | {owner} | {country} | "
+            "{first} | {last} | {samples} |".format(
+                ip=endpoint.get("ip"),
+                port=endpoint.get("port"),
+                proto=endpoint.get("protocol"),
+                attribution=endpoint.get("attribution"),
+                hosts=hosts,
+                owner=owner,
+                country=country,
+                first=endpoint.get("first_seen"),
+                last=endpoint.get("last_seen"),
+                samples=endpoint.get("samples"),
+            )
+        )
+    return "\n".join(lines)
+
+
+def print_endpoint_table(endpoints: Sequence[dict]) -> None:
+    if not endpoints:
+        print("\nExternal endpoints: none observed.")
+        return
+    print("\nExternal endpoints:")
+    print(format_endpoint_table(endpoints))
+    print()
+
+
+def write_markdown_report(
+    path: Path,
+    findings: Sequence[Finding],
+    metadata: dict,
+    endpoints: Sequence[dict],
+    version: str,
+) -> None:
+    """Write a standalone Markdown report of one communication audit."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    counts = severity_counts(findings)
+    points = score(findings)
+    lines = [
+        "# HarnessGuard communication audit",
+        "",
+        f"- Tool version: {version}",
+        f"- Generated: {now_iso()}",
+        f"- Risk heuristic: {risk_label(points)} ({points}/100)",
+        "- Findings: "
+        + " ".join(f"{s}={counts.get(s, 0)}" for s in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")),
+        "",
+        "## Observed external endpoints",
+        "",
+    ]
+
+    if endpoints:
+        lines.append(format_endpoint_table(endpoints))
+    else:
+        lines.append("No external endpoints were observed during the sampling window.")
+
+    lines.extend(["", "## Findings", ""])
+    if not findings:
+        lines.append("No indicators found.")
+    for index, finding in enumerate(findings, 1):
+        lines.append(f"### {index:03d}. [{finding.severity}] {finding.title}")
+        lines.append("")
+        lines.append(f"- Category: {finding.category}")
+        lines.append(f"- Confidence: {finding.confidence}")
+        lines.append(f"- Evidence: {finding.evidence}")
+        if finding.recommendation:
+            lines.append(f"- Suggested action: {finding.recommendation}")
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Limitations",
+            "",
+            "- Connection observation is not proof of payload content; TLS prevents inspection "
+            "without authorized interception.",
+            "- A quiet sampling window does not prove that no further egress occurs.",
+            "- Address attribution is heuristic: shared CDN edges answer for many hostnames.",
+            "- Jurisdiction of an address is context, not a verdict.",
+            "",
+            "## Metadata",
+            "",
+            "~~~json",
+            json.dumps(metadata, indent=2, default=str),
+            "~~~",
+            "",
+        ]
+    )
+    path.write_text("\n".join(lines), encoding="utf-8")
+

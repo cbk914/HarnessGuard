@@ -113,11 +113,12 @@ somewhere in an application bundle.
 
 # Features
 
-HarnessGuard currently provides four primary workflows:
+HarnessGuard currently provides five primary workflows:
 
 ```text
 harnessguard audit
 harnessguard runtime
+harnessguard network
 harnessguard canary
 harnessguard hunt
 ```
@@ -989,6 +990,60 @@ leave application idle
 
 ---
 
+## Endpoint attribution and payload evidence
+
+`harnessguard runtime` reports *that* a process talked to a destination.
+`harnessguard network` answers the follow-up questions: **which** endpoint it was, **who** operates it, and **what the harness actually sends**.
+
+Example:
+
+```bash
+python3 harnessguard.py network \
+    --process-name someide \
+    --watch 180 \
+    --app-data ~/.config/someide \
+    --geoip \
+    --markdown network-report.md
+```
+
+The command:
+
+- samples TCP and UDP sockets of the target process and every descendant;
+- resolves each remote address back to the hostnames that serve it, using the
+  harness' own configuration files, DNS answers and reverse DNS;
+- classifies each destination as **self-declared** (declared in the profile),
+  **referenced** (found in the harness' own configuration, state or bundle) or
+  **unattributed** (no link found);
+- optionally reads the TLS certificate of unattributed destinations to recover
+  the names they are authorised to serve;
+- optionally resolves jurisdiction and network owner for every destination
+  (`--geoip`). This is the only step that contacts an external service and it
+  is opt-in;
+- locates outbound request payloads that the harness persisted on disk, which
+  mirror what is sent to the model endpoint.
+
+Endpoints are reported in the Markdown report and in the JSON output:
+
+```text
+| Endpoint | Attribution | Hosts | Owner | Jurisdiction | First seen | Last seen | Samples |
+```
+
+Findings raised by this workflow:
+
+| Category | Meaning |
+|---|---|
+| `network-third-party-egress` | The process contacted a destination that the harness configuration does not declare. |
+| `network-referenced-third-party` | A destination referenced by the harness' own files is outside the declared endpoint set. |
+| `network-beacon-pattern` | The same unattributed destination was contacted repeatedly inside the window, consistent with a heartbeat. |
+| `network-cross-jurisdiction-egress` | The destination is registered in a jurisdiction outside the ones declared for the harness. Context, not a verdict. |
+| `network-payload-evidence` | The harness stores the serialized outbound request (model, system prompt, tool schemas, conversation) on disk. |
+| `network-egress` | No public destination was observed in the window. Informational. |
+
+See [docs/NETWORK_COMMS.md](docs/NETWORK_COMMS.md) for the full model, the
+profile format and the attribution rules.
+
+---
+
 # 3. Synthetic canary repository
 
 The canary workflow creates a completely synthetic test project instead of requiring real repositories containing real secrets.
@@ -1436,12 +1491,10 @@ Planned areas include:
 - Semgrep integration;
 - YARA support.
 
+Delivered in `0.2.0`: process tree tracking, connection timelines, DNS correlation, TLS certificate name extraction, endpoint ownership resolution and Markdown reporting.
+
 ## Runtime analysis
 
-- process tree tracking;
-- connection timelines;
-- DNS correlation;
-- TLS SNI extraction;
 - filesystem event correlation;
 - Windows ETW backend;
 - Linux eBPF backend;
@@ -1452,8 +1505,7 @@ Planned areas include:
 - PCAP integration;
 - proxy integration;
 - Burp Suite integration;
-- mitmproxy addon;
-- endpoint ownership resolution.
+- mitmproxy addon.
 
 ## Canary framework
 
@@ -1470,7 +1522,6 @@ Planned areas include:
 
 - HTML reports;
 - SARIF;
-- Markdown;
 - evidence bundles;
 - timeline visualization;
 - CI integration.

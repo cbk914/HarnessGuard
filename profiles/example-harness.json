@@ -1,0 +1,9 @@
+{
+  "name": "example-harness",
+  "notes": "Copy this file to ~/.harnessguard/profiles/ and adapt it. declared_hosts are the endpoints the harness is expected to use; declared_jurisdictions are advisory.",
+  "process_patterns": ["example-harness"],
+  "regex": false,
+  "declared_hosts": ["api.example.com"],
+  "declared_jurisdictions": ["US"],
+  "app_data_paths": []
+}

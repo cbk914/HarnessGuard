@@ -11,7 +11,16 @@ from pathlib import Path
 
 from . import __version__
 from .canary import hunt_canaries, make_canary_workspace
-from .reporting import exit_code, print_report, save_json
+from .comms import comms_audit
+from .net_scan import find_pids
+from .profiles import HarnessProfile, load_profile
+from .reporting import (
+    exit_code,
+    print_endpoint_table,
+    print_report,
+    save_json,
+    write_markdown_report,
+)
 from .runtime_scan import find_pids_by_name, runtime_audit
 from .static_scan import audit_paths
 from .utils import short_path
@@ -50,6 +59,33 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--process-name")
     runtime.add_argument("--watch", type=int, default=0)
     runtime.add_argument("--json", type=Path)
+
+    network = subcommands.add_parser(
+        "network",
+        help="Map, attribute and classify the outbound communications of a harness",
+    )
+    network.add_argument("--pid", action="append", type=int, default=[])
+    network.add_argument("--process-name", action="append", default=[])
+    network.add_argument("--profile", type=Path)
+    network.add_argument("--watch", type=int, default=60)
+    network.add_argument("--interval", type=float, default=1.0)
+    network.add_argument("--declared-host", action="append", default=[])
+    network.add_argument("--app-data", action="append", default=[], type=Path)
+    network.add_argument("--max-file-mb", type=int, default=16)
+    network.add_argument(
+        "--geoip",
+        action="store_true",
+        help="Resolve jurisdiction and network owner for observed addresses (network call)",
+    )
+    network.add_argument("--geo-endpoint")
+    network.add_argument("--geo-cache", type=Path)
+    network.add_argument(
+        "--tls-names",
+        action="store_true",
+        help="Read the TLS certificate of unattributed endpoints to improve attribution",
+    )
+    network.add_argument("--markdown", type=Path)
+    network.add_argument("--json", type=Path)
 
     canary = subcommands.add_parser(
         "canary", help="Create a synthetic repository containing fake secrets and canaries"
@@ -109,6 +145,58 @@ def main(argv: Sequence[str] | None = None) -> int:
                 **runtime_metadata,
             }
             print_report(findings, metadata, __version__)
+            if args.json:
+                save_json(args.json, findings, metadata, __version__)
+            return exit_code(findings)
+
+        if args.command == "network":
+            profile = load_profile(args.profile) if args.profile else HarnessProfile()
+
+            pids: list[int] = list(args.pid)
+            if args.process_name:
+                pids.extend(find_pids(list(args.process_name), regex=False))
+            if profile.process_patterns:
+                pids.extend(find_pids(list(profile.process_patterns), regex=profile.regex))
+            pids = sorted(set(pids))
+
+            if not pids:
+                print(
+                    "No process matched. Use --pid, --process-name or --profile with "
+                    "process_patterns.",
+                    file=sys.stderr,
+                )
+                return 3
+
+            declared = list(args.declared_host) + list(profile.declared_hosts)
+            app_data = [Path(p) for p in args.app_data] + [
+                Path(p) for p in profile.app_data_paths
+            ]
+
+            findings, comms_metadata = comms_audit(
+                pids,
+                watch=max(0, args.watch),
+                interval=args.interval,
+                declared_hosts=declared,
+                app_data_paths=app_data,
+                declared_jurisdictions=profile.declared_jurisdictions,
+                geoip=args.geoip,
+                geo_endpoint=args.geo_endpoint,
+                geo_cache_path=args.geo_cache,
+                probe_tls_names=args.tls_names,
+                max_file_bytes=max(1, args.max_file_mb) * 1024 * 1024,
+            )
+
+            endpoints = comms_metadata.get("endpoints", [])
+            metadata = {
+                "mode": "network",
+                "platform": platform.platform(),
+                "profile": profile.name,
+                **comms_metadata,
+            }
+            print_report(findings, metadata, __version__)
+            print_endpoint_table(endpoints)
+            if args.markdown:
+                write_markdown_report(args.markdown, findings, metadata, endpoints, __version__)
             if args.json:
                 save_json(args.json, findings, metadata, __version__)
             return exit_code(findings)
