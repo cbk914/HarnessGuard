@@ -10,8 +10,25 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__
+from .blocking import (
+    SCOPE_DNS,
+    SCOPE_LOCAL,
+    SCOPE_NETWORK,
+    apply_local_hosts,
+    build_plan,
+    prompt_plan,
+    render_markdown,
+    render_summary,
+    write_firewall_script,
+    write_hosts_file,
+    write_pihole_list,
+    write_profile_skeleton,
+    write_unifi_list,
+)
 from .canary import hunt_canaries, make_canary_workspace
 from .comms import comms_audit
+from .endpoint_roles import OPTIONAL
+from .models import Finding
 from .net_scan import find_pids
 from .profiles import HarnessProfile, load_profile
 from .reporting import (
@@ -26,6 +43,7 @@ from .static_scan import audit_paths
 from .utils import short_path
 
 DEFAULT_MAX_TOTAL_FILES = 120_000
+DEFAULT_BLOCK_OUT = Path("harnessguard-blocklist.txt")
 
 
 def add_common_scan_args(parser: argparse.ArgumentParser) -> None:
@@ -84,6 +102,29 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Read the TLS certificate of unattributed endpoints to improve attribution",
     )
+    network.add_argument(
+        "--plan",
+        action="store_true",
+        help="Summarise what was detected, what each destination does and what it receives",
+    )
+    network.add_argument("--plan-out", type=Path, help="Write the communication summary as Markdown")
+    network.add_argument(
+        "--block-format",
+        choices=["hosts", "pihole", "unifi", "firewall", "profile"],
+        default="pihole",
+        help="Format of the blocklist artifact",
+    )
+    network.add_argument("--block-out", type=Path, help="Where to write the blocklist artifact")
+    network.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Offer every destination that is not strictly necessary and apply the chosen scope",
+    )
+    network.add_argument(
+        "--apply-local",
+        action="store_true",
+        help="Write the blocklist of non-essential destinations into the local hosts file",
+    )
     network.add_argument("--markdown", type=Path)
     network.add_argument("--json", type=Path)
 
@@ -101,6 +142,20 @@ def build_parser() -> argparse.ArgumentParser:
     add_common_scan_args(hunt)
 
     return parser
+
+
+def _write_block_artifact(fmt: str, path: Path, plans) -> int:
+    if fmt == "hosts":
+        return write_hosts_file(path, plans)
+    if fmt == "pihole":
+        return write_pihole_list(path, plans)
+    if fmt == "unifi":
+        return write_unifi_list(path, plans)
+    if fmt == "firewall":
+        return write_firewall_script(path, plans)
+    if fmt == "profile":
+        return write_profile_skeleton(path, plans)
+    return write_pihole_list(path, plans)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -187,11 +242,89 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
             endpoints = comms_metadata.get("endpoints", [])
+            plans = build_plan(
+                endpoints,
+                payload_records=comms_metadata.get("payload_records"),
+                essential_hosts=list(profile.essential()),
+                declared_hosts=declared,
+            )
+
+            for plan in plans:
+                if plan.necessity != OPTIONAL:
+                    continue
+                findings.append(
+                    Finding(
+                        "LOW",
+                        "network-optional-endpoint",
+                        "Destination is not strictly necessary for the harness to work",
+                        f"{plan.label()}; {plan.what_it_does}",
+                        confidence="MEDIUM",
+                        metadata={"component_id": f"endpoint:{plan.ip}", "endpoint": plan},
+                        recommendation=(
+                            "Offer this destination to the operator as a blocking option and state "
+                            "what it receives before it is blocked."
+                        ),
+                    )
+                )
+
+            wants_plan = args.plan or args.plan_out or args.interactive or args.block_out
+            if wants_plan:
+                print(render_summary(plans))
+
+            if args.plan_out:
+                args.plan_out.parent.mkdir(parents=True, exist_ok=True)
+                args.plan_out.write_text(render_markdown(plans), encoding="utf-8")
+                print(f"\nCommunication summary written to {args.plan_out}")
+
+            if args.block_out:
+                count = _write_block_artifact(args.block_format, args.block_out, plans)
+                print(f"\nBlocklist ({args.block_format}) written to {args.block_out}: {count} entries")
+
+            if args.apply_local:
+                result = apply_local_hosts(plans)
+                if result.get("written"):
+                    print(f"\nLocal hosts updated: {result['path']} ({result['count']} entries)")
+                else:
+                    print(f"\nLocal hosts NOT modified: {result.get('reason')}")
+                    print(f"  target: {result.get('path')}")
+
+            if args.interactive:
+                selection = prompt_plan(plans)
+                if selection[SCOPE_LOCAL]:
+                    result = apply_local_hosts(plans, hosts=selection[SCOPE_LOCAL])
+                    if result.get("written"):
+                        print(f"\nLocal hosts updated: {result['path']}")
+                    else:
+                        print(f"\nLocal hosts NOT modified: {result.get('reason')}")
+                if selection[SCOPE_DNS]:
+                    target = args.block_out or DEFAULT_BLOCK_OUT
+                    count = write_pihole_list(target, plans, hosts=selection[SCOPE_DNS])
+                    print(f"DNS blocklist written to {target}: {count} entries")
+                if selection[SCOPE_NETWORK]:
+                    target = args.block_out or DEFAULT_BLOCK_OUT
+                    count = write_firewall_script(
+                        target, plans, addresses=selection[SCOPE_NETWORK]
+                    )
+                    print(f"Firewall script written to {target}: {count} addresses")
+
             metadata = {
                 "mode": "network",
                 "platform": platform.platform(),
                 "profile": profile.name,
                 **comms_metadata,
+                "plan": [
+                    {
+                        "endpoint": plan.label(),
+                        "role": plan.role,
+                        "necessity": plan.necessity,
+                        "what_it_does": plan.what_it_does,
+                        "receives": plan.data_received,
+                        "reason": plan.reason,
+                        "blockable": plan.blockable,
+                        "targets": plan.block_targets(),
+                    }
+                    for plan in plans
+                ],
             }
             print_report(findings, metadata, __version__)
             print_endpoint_table(endpoints)

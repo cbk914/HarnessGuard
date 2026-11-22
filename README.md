@@ -1044,6 +1044,94 @@ profile format and the attribution rules.
 
 ---
 
+## Necessity classification and blocking options
+
+Knowing *that* a destination is contacted does not answer whether it should
+be. Every observed endpoint is therefore classified by **role** (what it does)
+and by **necessity** (whether the harness can work without it).
+
+| Necessity | Meaning | Effect of blocking it |
+|---|---|---|
+| `core` | The harness cannot work without it. | Not offered. |
+| `feature` | Only one capability depends on it. | Disables that capability. |
+| `optional` | Telemetry or analytics. | Removes no capability. |
+
+```bash
+python3 harnessguard.py network \
+    --process-name someide \
+    --watch 180 \
+    --plan \
+    --plan-out network-summary.md
+```
+
+The summary states, for every destination, what it does and what data it
+receives:
+
+```text
+NOT NECESSARY - telemetry or analytics; blocking it does not remove any capability
+--------------------------------------------------------------------------------
+  203.0.113.11:443/tcp (rum-openway.example.com)
+      role         : telemetry
+      what it does : diagnostics: errors, crashes, performance and health signals
+      it receives  : session identifiers, error reports, stack traces, resource and timing data
+      blockable    : yes (rum-openway.example.com)
+```
+
+### Letting the operator decide
+
+HarnessGuard never blocks a destination on its own. `--interactive` offers
+every destination that is not strictly necessary and asks which scope to
+apply:
+
+```bash
+python3 harnessguard.py network --process-name someide --interactive
+```
+
+| Scope | Effect |
+|---|---|
+| `l` | Add the hostname to the local hosts file. |
+| `d` | Write the hostname to a DNS blocklist (Pi-hole style). |
+| `n` | Write an outbound firewall rule for the address. |
+| `s` | Leave the destination alone. |
+
+Only the destinations chosen for a scope are written into the artifact for
+that scope. A destination skipped for DNS never reaches the DNS list, and a
+destination assigned to DNS never reaches the hosts file.
+
+Artifacts can also be produced without a prompt:
+
+```bash
+python3 harnessguard.py network --process-name someide \
+    --block-format pihole --block-out blocklist.txt
+```
+
+| `--block-format` | Content |
+|---|---|
+| `hosts` | `0.0.0.0 hostname` lines for the local hosts file. |
+| `pihole` | The same entries with a header, ready for `/etc/pihole/hosts.d/`. |
+| `unifi` | One hostname per line, for a DNS filter that expects bare names. |
+| `firewall` | A script that blocks the addresses at the firewall. |
+| `profile` | A harness profile skeleton derived from the observation. |
+
+### Choosing the right scope
+
+Hostname scopes and address scopes have very different blast radius.
+
+**Hostname blocking** stops the name from resolving and leaves every other
+name untouched. Two names served from the same address stay independent: a
+hostname rule cannot break a destination it does not name.
+
+**Address blocking** rejects the address itself. A shared origin or a shared
+CDN edge can serve a destination the harness needs, so an address rule can
+break a capability that looks unrelated to the blocked destination. Resolve
+the address and check what else answers on it before writing an address rule.
+
+The `essential_hosts` key in a harness profile marks the destinations the
+harness cannot work without. Those are classified as `core` and are never
+offered for blocking.
+
+---
+
 # 3. Synthetic canary repository
 
 The canary workflow creates a completely synthetic test project instead of requiring real repositories containing real secrets.

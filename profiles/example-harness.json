@@ -4,6 +4,7 @@
   "process_patterns": ["example-harness"],
   "regex": false,
   "declared_hosts": ["api.example.com"],
+  "essential_hosts": ["api.example.com"],
   "declared_jurisdictions": ["US"],
   "app_data_paths": []
 }

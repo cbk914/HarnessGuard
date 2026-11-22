@@ -299,6 +299,23 @@ def comms_audit(
         "harvested_hosts": sorted(h.lower() for h in harvested)[:200],
         "geoip_enabled": bool(geoip),
         "payload_evidence": payload_stats,
+        "model_hosts": sorted(
+            {str(r.get("endpoint_host")) for r in payload_records if r.get("endpoint_host")}
+        ),
+        "payload_records": [
+            {
+                key: record.get(key)
+                for key in (
+                    "path",
+                    "model",
+                    "endpoint_host",
+                    "context_bytes",
+                    "tool_count",
+                    "carries_user_text",
+                )
+            }
+            for record in payload_records[:50]
+        ],
         "endpoints": endpoints,
         "generated_at": now_iso(),
     }

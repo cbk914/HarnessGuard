@@ -28,6 +28,23 @@
 - Harness profiles (`profiles/*.json`, `~/.harnessguard/profiles/`) describing
   expected processes, endpoints and jurisdictions, with two examples.
 
+### Necessity classification and blocking options
+- Every observed destination is classified by role (model endpoint, streaming,
+  authentication, storage, update, platform, CDN asset, telemetry, analytics)
+  and by necessity (`core`, `feature`, `optional`).
+- New communication summary (`--plan`, `--plan-out`) stating what each
+  destination does and what data it receives.
+- New finding `network-optional-endpoint` (LOW) for every destination that is
+  not strictly necessary for the harness to work.
+- `--interactive` offers each non-essential destination to the operator and
+  applies only the scope chosen for it: local hosts file, DNS blocklist or
+  outbound firewall rule. A destination skipped for one scope never reaches
+  the artifact of another scope.
+- Blocklist artifacts in five formats: `hosts`, `pihole`, `unifi`,
+  `firewall` and `profile`.
+- Profiles accept `essential_hosts` to mark the destinations the harness
+  cannot work without; those are never offered for blocking.
+
 ### Documentation
 - New `docs/NETWORK_COMMS.md` describing the attribution model, the profile
   format, the finding semantics and the limits of the evidence.

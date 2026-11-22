@@ -17,12 +17,16 @@ class HarnessProfile:
     process_patterns: list[str] = field(default_factory=list)
     regex: bool = False
     declared_hosts: list[str] = field(default_factory=list)
+    essential_hosts: list[str] = field(default_factory=list)
     declared_jurisdictions: list[str] = field(default_factory=list)
     app_data_paths: list[str] = field(default_factory=list)
     notes: str = ""
 
     def hosts(self) -> set[str]:
         return {h.strip().lower().lstrip(".") for h in self.declared_hosts if h.strip()}
+
+    def essential(self) -> set[str]:
+        return {h.strip().lower().lstrip(".") for h in self.essential_hosts if h.strip()}
 
 
 def load_profile(path: Path) -> HarnessProfile:
@@ -34,6 +38,7 @@ def load_profile(path: Path) -> HarnessProfile:
         process_patterns=[str(p) for p in data.get("process_patterns") or []],
         regex=bool(data.get("regex", False)),
         declared_hosts=[str(h) for h in data.get("declared_hosts") or []],
+        essential_hosts=[str(h) for h in data.get("essential_hosts") or []],
         declared_jurisdictions=[
             str(j).upper() for j in data.get("declared_jurisdictions") or []
         ],
